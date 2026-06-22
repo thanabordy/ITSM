@@ -2,13 +2,11 @@ const pool = require('../config/db');
 
 exports.getAllUsers = async (req, res) => {
     try {
-        const role = req.query.role;
-        const department = req.query.department;
-        
-        // หากหน้าบ้านส่ง limit หรือ offset มา ให้แปลงเป็น Number เสมอ ป้องกัน RangeError
-        const limit = req.query.limit ? parseInt(req.query.limit, 10) : null;
-        const offset = req.query.offset ? parseInt(req.query.offset, 10) : null;
-        // Modified query to include skills and permissions via left join and group_concat
+        // 1. บังคับให้รับค่าเป็น String เท่านั้น! 
+        // ป้องกันกรณีหน้าบ้านส่ง Query มาเป็น Object หรือ Array ซึ่งเป็นสาเหตุทำให้ mysql2 บัฟเฟอร์พัง
+        const role = typeof req.query.role === 'string' ? req.query.role : null;
+        const department = typeof req.query.department === 'string' ? req.query.department : null;
+
         let query = `
             SELECT u.id, u.code, u.name, u.name_en, u.email, u.role, u.department, u.position, u.avatar, u.level, u.supervisor_id, u.phone, u.location, u.gender,
             GROUP_CONCAT(DISTINCT us.skill) as skills,
@@ -19,31 +17,34 @@ exports.getAllUsers = async (req, res) => {
         `;
 
         let params = [];
-        let conditions = [];
+        // 2. ใส่เงื่อนไขหลักที่ต้องมีเสมอไว้เป็นค่าเริ่มต้น
+        let conditions = ['u.deleted_at IS NULL'];
 
-        if (role || department) {
-            conditions.push('u.deleted_at IS NULL');
-            if (role) {
-                conditions.push('u.role = ?');
-                params.push(role);
-            }
-            if (department) {
-                conditions.push('u.department = ?');
-                params.push(department);
-            }
-        } else {
-            conditions.push('u.deleted_at IS NULL');
+        // 3. ตรวจสอบและเพิ่มเงื่อนไขเฉพาะเมื่อตัวแปรมีค่าที่ถูกต้องจริงๆ
+        if (role) {
+            conditions.push('u.role = ?');
+            params.push(role);
+        }
+        if (department) {
+            conditions.push('u.department = ?');
+            params.push(department);
         }
 
-        if (conditions.length > 0) {
-            query += ' WHERE ' + conditions.join(' AND ');
-        }
-
+        // ประกอบร่าง SQL Query
+        query += ' WHERE ' + conditions.join(' AND ');
         query += ' GROUP BY u.id';
 
+        /* // 📝 หมายเหตุ: หากในอนาคตคุณต้องการใช้ระบบแบ่งหน้า (Pagination) 
+        // ให้ปลดคอมเมนต์โค้ดด้านล่างนี้เพื่อใช้งาน limit และ offset อย่างปลอดภัย
+        const limit = req.query.limit ? parseInt(req.query.limit, 10) : null;
+        const offset = req.query.offset ? parseInt(req.query.offset, 10) : null;
+        if (limit !== null && !isNaN(limit) && offset !== null && !isNaN(offset)) {
+            query += ' LIMIT ? OFFSET ?';
+            params.push(limit, offset);
+        }
+        */
+
         const [rows] = await pool.query(query, params);
-
-
 
         // Process rows to convert comma-separated strings to arrays
         const users = rows.map(u => ({
@@ -104,7 +105,6 @@ exports.createUser = async (req, res) => {
     try {
         const { id, code, name, nameEn, email, department, position, role, password, level, supervisorId, phone, location, gender } = req.body;
 
-
         // Basic validation
         if (!id || !code || !name || !email || !role) {
             return res.status(400).json({ message: 'Missing required fields' });
@@ -157,7 +157,6 @@ exports.updateUser = async (req, res) => {
     try {
         const userId = req.params.id;
         const { name, nameEn, email, department, position, role, skills, permissions } = req.body;
-
 
         // Update User Details
         const avatar = name ? name.substring(0, 2).toUpperCase() : '?';
