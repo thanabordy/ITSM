@@ -2,7 +2,12 @@ const pool = require('../config/db');
 
 exports.getAllUsers = async (req, res) => {
     try {
-        const { role, department } = req.query;
+        const role = req.query.role;
+        const department = req.query.department;
+        
+        // หากหน้าบ้านส่ง limit หรือ offset มา ให้แปลงเป็น Number เสมอ ป้องกัน RangeError
+        const limit = req.query.limit ? parseInt(req.query.limit, 10) : null;
+        const offset = req.query.offset ? parseInt(req.query.offset, 10) : null;
         // Modified query to include skills and permissions via left join and group_concat
         let query = `
             SELECT u.id, u.code, u.name, u.name_en, u.email, u.role, u.department, u.position, u.avatar, u.level, u.supervisor_id, u.phone, u.location, u.gender,
